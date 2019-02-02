@@ -528,19 +528,6 @@ void PiImageResizer::cleanup()
     else
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Component transitioned to idle\n",ret);
 
-	
-	OMX_PARAM_PORTDEFINITIONTYPE portdef;
-
-    // Get the image dimensions
-    //TODO: Store color format too
-    portdef.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
-    portdef.nVersion.nVersion = OMX_VERSION;
-    portdef.nPortIndex = inPort;
-    ret = OMX_GetParameter(handle,
-		     OMX_IndexParamPortDefinition, &portdef);
-
-	printf("Enabled: %d\n",portdef.bEnabled == OMX_TRUE ? 1 : 0);
-
     ret = OMX_SendCommand(handle, OMX_CommandPortDisable, inPort, NULL);
     if(ret != 0)
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Error disabling resizer input port: %s\n", OMX_errString(ret));
