@@ -7,7 +7,7 @@
 
 
 
-PisLogLevels pis_loggingLevel = PIS_LOGLEVEL_WARN;
+PisLogLevels pis_loggingLevel = PIS_LOGLEVEL_ALL;
 
 void printState(OMX_HANDLETYPE handle) {
     OMX_STATETYPE state;

@@ -42,29 +42,13 @@ void stop(int s){
 	SignageExit = 1;
 }
 
-//Removes the console from dispmanx
-void blankPiHDMI()
-{
-	std::ofstream myfile;
-	myfile.open ("/sys/class/graphics/fb0/blank");
-	if (myfile.is_open()) {
-		pis_logMessage(PIS_LOGLEVEL_INFO,"fb0 blanked\n");
-		myfile << "1";
-		myfile.close();
-	}else{
-		pis_logMessage(PIS_LOGLEVEL_ERROR,"Error blanking fb0\n");
-	}
-}
-
 void LoadStub(pis_MediaImageGFX *g){
 	g->Load();
 }
 
 int main(int argc, char *argv[])
 {
-	pis_loggingLevel = PIS_LOGLEVEL_ERROR;
-
-	blankPiHDMI();
+	pis_loggingLevel = PIS_LOGLEVEL_ALL;
 
 	bcm_host_init();
 

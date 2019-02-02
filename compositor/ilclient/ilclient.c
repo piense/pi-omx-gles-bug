@@ -1117,7 +1117,6 @@ int ilclient_wait_for_event(COMPONENT_T *comp, OMX_EVENTTYPE event,
 
    while (ilclient_remove_event(comp, event, nData1, ignore1, nData2, ignore2) < 0)
    {
-
       // if we want to be notified of errors, check the list for an error now
       // before blocking, the event flag may have been cleared already.
       if(event_flag & ILCLIENT_EVENT_ERROR)
@@ -1155,9 +1154,8 @@ int ilclient_wait_for_event(COMPONENT_T *comp, OMX_EVENTTYPE event,
 
       status = vcos_event_flags_get(&comp->event, event_flag, VCOS_OR_CONSUME, 
                                     suspend, &set);
-      if (status != 0){
+      if (status != 0)
          return -1;
-      }
       if (set & ILCLIENT_EVENT_ERROR)
          return -2;
       if (set & ILCLIENT_CONFIG_CHANGED)
@@ -1371,10 +1369,7 @@ void ilclient_debug_output(char *format, ...)
    va_list args;
 
    va_start(args, format);
-   //vprintf(format,args);
-   //printf("\n");
    vcos_vlog_info(format, args);
-
    va_end(args);
 }
 
@@ -1838,3 +1833,4 @@ unsigned int ilclient_stack_size(void)
 {
    return ILCLIENT_THREAD_DEFAULT_STACK_SIZE;
 }
+
