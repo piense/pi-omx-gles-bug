@@ -1,1 +1,1 @@
-This is a signage application for the Pi2 & 3 using GPU acceleration as much as possible. It is designed to run on a minimal OS layer built with buildroot. It will support static and dynamic slide content and video playback. Through the host OS it also supports a TCP/IP connection to usb->serial port passthrough. It's designed to be an off-the-shelf solution for classrooms, and public displays while being integrator friendly.
+Should build on raspbian with just 'make'. You will need to increase the GPU RAM from the default value of 64 MB, I used 200 ish.
