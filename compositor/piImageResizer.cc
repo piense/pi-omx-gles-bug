@@ -66,17 +66,12 @@ void PiImageResizer::FillBufferDoneCB(
 
 	PiImageResizer *decoder = (PiImageResizer *) data;
 
-	//TODO: output directly to the image buffer
 	if(decoder->obHeader != NULL){
 		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Processing received buffer\n");
 
 		if(decoder->obHeader->nFilledLen + decoder->obDecodedAt > decoder->obHeader->nAllocLen){
 			pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: ERROR overrun of decoded image buffer\n %d %d %d\n",
 					decoder->obHeader->nFilledLen, decoder->obDecodedAt, decoder->obHeader->nAllocLen);
-		}else{
-			//Copy output port buffer to output image buffer
-			//memcpy(&decoder->outputPic[decoder->obDecodedAt],
-	    	//	decoder->obHeader->pBuffer + decoder->obHeader->nOffset,decoder->obHeader->nFilledLen);
 		}
 
 	    decoder->obDecodedAt += decoder->obHeader->nFilledLen;
@@ -117,8 +112,10 @@ int PiImageResizer::portSettingsChanged()
     portdef.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
     portdef.nVersion.nVersion = OMX_VERSION;
     portdef.nPortIndex = outPort;
-    OMX_GetParameter(handle,
+    int ret = OMX_GetParameter(handle,
 		     OMX_IndexParamPortDefinition, &portdef);
+	if(ret != OMX_ErrorNone)
+        	pis_logMessage(PIS_LOGLEVEL_ERROR, "portSettingsChanged1: Error %s getting parameters(1).\n",OMX_errString(ret));
 
     portdef.format.image.eColorFormat = (OMX_COLOR_FORMATTYPE)outputColorSpace;
 
@@ -129,14 +126,20 @@ int PiImageResizer::portSettingsChanged()
     portdef.format.image.nStride = ALIGN_UP(outputWidth,16)*4;
 	portdef.format.image.nSliceHeight = 0;
 
-    int ret = OMX_SetParameter(handle,
+    ret = OMX_SetParameter(handle,
 		     OMX_IndexParamPortDefinition, &portdef);
 
-    if(ret != OMX_ErrorNone)
-        	pis_logMessage(PIS_LOGLEVEL_ERROR, "portSettingsChanged1: Error %x enabling buffers.\n",ret);
+    if(ret != OMX_ErrorNone){
+		pis_logMessage(PIS_LOGLEVEL_ERROR, "portSettingsChanged1: Error %s enabling buffers.\n",OMX_errString(ret));
+		return -1;
+	}
 
-    OMX_GetParameter(handle,
+    ret = OMX_GetParameter(handle,
 		     OMX_IndexParamPortDefinition, &portdef);
+	if(ret != OMX_ErrorNone){
+		pis_logMessage(PIS_LOGLEVEL_ERROR, "portSettingsChanged1: Error %s getting parameters(2).\n",OMX_errString(ret));
+		return -2;
+	}
 
     outputStride = portdef.format.image.nStride;
     outputSliceHeight = portdef.format.image.nSliceHeight;
@@ -145,23 +148,23 @@ int PiImageResizer::portSettingsChanged()
     pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Resizing to: %dx%d\n",
     		portdef.format.image.nFrameWidth, portdef.format.image.nFrameHeight);
 
-
     pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Enabling out port\n");
 
     // enable the port and setup the buffers
     ret = OMX_SendCommand(handle, OMX_CommandPortEnable, outPort, NULL);
     if(ret != OMX_ErrorNone){
     	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: error enabling output port : %s\n",OMX_errString(ret));
-    	return -1;
+    	return -3;
     }
     else
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Output port enabled\n");
 
-
+	// Create a buffer for the output of the resizer and connect it to the port
     outputPic = new uint8_t[portdef.nBufferSize];
+	obDecodedAt = portdef.nBufferSize;
 	if(outputPic == NULL){
 		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Failed to allocated output image.\n");
-		return -1;
+		return -4;
 	}else{
 		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Allocated output port buffer of: %d with stride %d.\n", portdef.nBufferSize, outputStride);
 	}
@@ -169,7 +172,7 @@ int PiImageResizer::portSettingsChanged()
     ret = OMX_UseBuffer(handle, &obHeader, outPort, NULL, portdef.nBufferSize, outputPic);
     if(ret != OMX_ErrorNone){
     	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: error assigning output port buffer: %s\n",OMX_errString(ret));
-    	return -1;
+    	return -5;
     }
     else
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Output port buffers assigned\n");
@@ -185,12 +188,10 @@ int PiImageResizer::portSettingsChanged()
 				0, TIMEOUT_MS);
     if (ret != 0) {
 		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Output port enabled failed: %d\n", ret);
-		return -1;
+		return -6;
     }else{
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Output port enabled.\n");
     }
-
-    //printOMXPort(handle,outPort);
 
     return 0;
 }
@@ -217,7 +218,6 @@ int PiImageResizer::prepareImageResizer()
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Created the component.\n");
     }
 
-
     // grab the handle for later use in OMX calls directly
     handle = ILC_GET_HANDLE(component);
 
@@ -226,10 +226,15 @@ int PiImageResizer::prepareImageResizer()
     port.nSize = sizeof(OMX_PORT_PARAM_TYPE);
     port.nVersion.nVersion = OMX_VERSION;
 
-    OMX_GetParameter(handle,
+    ret = OMX_GetParameter(handle,
 		     OMX_IndexParamImageInit, &port);
+	if (ret != 0) {
+		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: GetParameter failed %s\n", OMX_errString(ret));
+		return -26;
+    }
+
     if (port.nPorts != 2) {
-    	return -1;
+    	return -3;
     }
 
     inPort = port.nStartPortNumber;
@@ -263,6 +268,7 @@ int PiImageResizer::startupImageResizer()
     if(ret != OMX_ErrorNone)
     {
     	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Error: Could not set input port color format: %s\n", OMX_errString(ret));
+		return -1;
     }else{
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Set input port color format.\n");
     }
@@ -349,12 +355,12 @@ int PiImageResizer::startupImageResizer()
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Input port enabled.\n");
     }
 
-    pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Starting image decoder ...\n");
+    pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Starting image resizer ...\n");
 	// start executing the decoder
 	ret = OMX_SendCommand(handle,
 			  OMX_CommandStateSet, OMX_StateExecuting, NULL);
 	if (ret != 0) {
-		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Failed starting image decoder: %x\n", ret);
+		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Failed starting image resizer: %x\n", ret);
 		return -1;
 	}else{
 		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Executing started.\n");
@@ -377,7 +383,7 @@ int PiImageResizer::startupImageResizer()
 // this function run the boilerplate to setup the openmax components;
 int PiImageResizer::setupOpenMaxImageResizer()
 {
-	pis_logMessage(PIS_LOGLEVEL_FUNCTION_HEADER,"Resizer: setupOpenMaxJpegDecoder()\n");
+	pis_logMessage(PIS_LOGLEVEL_FUNCTION_HEADER,"Resizer: setupOpenMaxImageResizer()\n");
 
     if ((client = ilclient_init()) == NULL) {
     	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Failed to init ilclient\n");
@@ -386,10 +392,10 @@ int PiImageResizer::setupOpenMaxImageResizer()
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: ilclient loaded.\n");
     }
 
-    ilclient_set_error_callback(client, error_callback, this);
+    //ilclient_set_error_callback(client, error_callback, this);
     //ilclient_set_eos_callback(client, eos_callback, NULL);
-    ilclient_set_fill_buffer_done_callback(
-    		client, FillBufferDoneCB, this);
+    //ilclient_set_fill_buffer_done_callback(
+    //		client, FillBufferDoneCB, this);
     //ilclient_set_empty_buffer_done_callback(
     //		client, EmptyBufferDoneCB, this);
 
@@ -428,44 +434,48 @@ int PiImageResizer::doResize()
     ret = OMX_EmptyThisBuffer(handle,ibBufferHeader);
 	if (ret != OMX_ErrorNone) {
 		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Error in OMX_EmptyThisBuffer: %s\n",OMX_errString(ret));
-		return OMX_ErrorUndefined;
+		return -1;
 	}else{
 		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Consuming the input buffer\n");
 	}
 
+	ret = ilclient_wait_for_event
+		(component, OMX_EventPortSettingsChanged,
+		outPort, 0, 0, 1,
+		0, 2000);
 
-    //TODO: handle case when we never get EOS (timeout?)
-    //TODO: handle global abort flag if OMX or ilclient throws something
-    while (obGotEOS == 0) {
-
-    	//TODO: See if this can get moved to a callback
-		if(!outputPortConfigured)
-		{
-			ret =
-				ilclient_wait_for_event
-				(component,
-				 OMX_EventPortSettingsChanged,
-				 outPort, 0, 0, 1,
-				 0, 0);
-
-			if (ret == 0) {
-				ret = portSettingsChanged();
-				if(ret != 0){
-					pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Port settings changed error.\n");
-					//TODO: Something to handle th error
-					return -1;
-				}
-				outputPortConfigured = 1;
-				ret = OMX_FillThisBuffer(handle, obHeader);
-				if (ret != OMX_ErrorNone) {
-					pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Error in FillThisBuffer: %s\n",OMX_errString(ret));
-					return OMX_ErrorUndefined;
-				}else{
-					pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Filling the output buffer\n");
-				}
-			}
+	if (ret == 0) {
+		ret = portSettingsChanged();
+		if(ret != 0){
+			pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: ERROR Port settings changed.\n");
+			return -2;
 		}
-    }
+		outputPortConfigured = 1;
+		ret = OMX_FillThisBuffer(handle, obHeader);
+		if (ret != OMX_ErrorNone) {
+			pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: ERROR in FillThisBuffer: %s\n",OMX_errString(ret));
+			return OMX_ErrorUndefined;
+		}else{
+			pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Filling the output buffer\n");
+		}
+	}else{
+		pis_logMessage(PIS_LOGLEVEL_ERROR, "Resizer: Output port settings didn't change: %d\n",ret);
+		return -3;
+	}
+
+	ret = ilclient_wait_for_event
+		(component, OMX_EventBufferFlag ,
+		outPort, 0,
+		OMX_BUFFERFLAG_EOS, 0,
+		ILCLIENT_BUFFER_FLAG_EOS, 10000);
+	if (ret != 0)
+	{
+		pis_logMessage(PIS_LOGLEVEL_ERROR, "Resizer: ERROR Output port didn't receive EOS: %d\n",ret);
+		return -4;
+	}else{
+		pis_logMessage(PIS_LOGLEVEL_ALL, "Resizer: EOS on output port detected\n");
+	}
+
 
     return 0;
 }
@@ -481,19 +491,20 @@ void PiImageResizer::cleanup()
 
 	if(handle == NULL)
 	{
-		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: No imageDecoder->handle\n");
+		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: No imageResizer->handle\n");
 		return;
 	}
 
 	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Continuing cleanup\n");
 
+
 	// flush everything through
-	ret = OMX_SendCommand(handle, OMX_CommandFlush, outPort, NULL);
+	ret = OMX_SendCommand(handle, OMX_CommandFlush, inPort, NULL);
 	if(ret != OMX_ErrorNone)
 		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Error flushing decoder commands: %s\n", OMX_errString(ret));
 	ret = ilclient_wait_for_event(component,
 				OMX_EventCmdComplete, OMX_CommandFlush, 0,
-				outPort, 0, ILCLIENT_PORT_FLUSH,
+				inPort, 0, ILCLIENT_PORT_FLUSH,
 				TIMEOUT_MS);
 	if(ret != 0)
 		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Error flushing decoder commands: %d\n", ret);
@@ -505,7 +516,7 @@ void PiImageResizer::cleanup()
     if(ret != OMX_ErrorNone)
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Error transitioning to idle: %s\n", OMX_errString(ret));
     else
-    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Component transitioning to idle\n");
+   		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Component transitioning to idle\n");
 
     //Once ports are disabled the component will go to idle
     ret = ilclient_wait_for_event(component,
@@ -517,9 +528,22 @@ void PiImageResizer::cleanup()
     else
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Component transitioned to idle\n",ret);
 
+	
+	OMX_PARAM_PORTDEFINITIONTYPE portdef;
+
+    // Get the image dimensions
+    //TODO: Store color format too
+    portdef.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
+    portdef.nVersion.nVersion = OMX_VERSION;
+    portdef.nPortIndex = inPort;
+    ret = OMX_GetParameter(handle,
+		     OMX_IndexParamPortDefinition, &portdef);
+
+	printf("Enabled: %d\n",portdef.bEnabled == OMX_TRUE ? 1 : 0);
+
     ret = OMX_SendCommand(handle, OMX_CommandPortDisable, inPort, NULL);
     if(ret != 0)
-    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Error disabling image decoder input port: %s\n", OMX_errString(ret));
+    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Error disabling resizer input port: %s\n", OMX_errString(ret));
     else
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Input port disabling\n");
 
@@ -544,7 +568,7 @@ void PiImageResizer::cleanup()
     else
     	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Disabling output port\n");
 
-    ret = OMX_FreeBuffer(handle,outPort, obHeader);
+    ret = OMX_FreeBuffer(handle, outPort, obHeader);
     obHeader = NULL;
     if(ret != OMX_ErrorNone)
         	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Error freeing output port buffer: %s\n", OMX_errString(ret));
@@ -558,22 +582,24 @@ void PiImageResizer::cleanup()
     ret = OMX_SendCommand(handle, OMX_CommandStateSet, OMX_StateLoaded, NULL);
 
     if(ret != OMX_ErrorNone)
-        	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Error moving to loaded state: %s\n", OMX_errString(ret));
+        	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Error moving to loaded state: %s\n", OMX_errString(ret));
 
     ret =  ilclient_wait_for_event(component,
-			    OMX_EventCmdComplete, OMX_CommandStateSet,
-			    0, outPort, 0, ILCLIENT_STATE_CHANGED,
+			    OMX_EventCmdComplete,
+				OMX_CommandStateSet, 0,
+				OMX_StateLoaded, 0,
+				ILCLIENT_STATE_CHANGED,
 			    TIMEOUT_MS);
-    if(ret != 0) pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: State never changed to loaded %d\n",ret);
+    if(ret != 0) pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: State never changed to loaded %d\n",ret);
 
     COMPONENT_T  *list[2];
     list[0] = component;
     list[1] = (COMPONENT_T  *)NULL;
     ilclient_cleanup_components(list);
 
-    //ret = OMX_Deinit();
+    ret = OMX_Deinit();
     if(ret != OMX_ErrorNone)
-    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Component did not enter Idle state: %d\n",ret);
+    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Component did not Deinit(): %d\n",ret);
 
     if (client != NULL) {
     	ilclient_destroy(client);
@@ -686,12 +712,11 @@ int PiImageResizer::ResizeImage(char *img,
     }
 
     s = doResize();
-
     if(s != 0){
-    	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Decode image failed: %s.\n", OMX_errString(s));
+    	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Resize image failed: %s.\n", OMX_errString(s));
     	goto error;
     }else{
-    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Image decoder succeeded, cleaning up.\n");
+    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Image resize succeeded, cleaning up.\n");
     }
 
     cleanup();
@@ -699,7 +724,7 @@ int PiImageResizer::ResizeImage(char *img,
 	*ret = new sImage;
 	if(ret == NULL){
 		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Failed to allocate sImage ret structure.\n");
-		return -1;
+		goto error;
 	}
 
 	//TODO: get colorSpace from the port settings
@@ -712,18 +737,16 @@ int PiImageResizer::ResizeImage(char *img,
 	(*ret)->colorSpace = outputColorSpace;
 
 	pis_logMessage(PIS_LOGLEVEL_ALL, "Resizer: Returning successfully.\n");
+
 	return 0;
 
     error:
 
 	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Exiting with error.\n");
-
-	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Cleaning up pDecoder\n");
+	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Cleaning up\n");
     cleanup();
+    pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Freeing\n");
 
-    pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Freeing pDecoder\n");
-    //Zero state(?)
-
-    return 0;
+    return -1;
 
 }
