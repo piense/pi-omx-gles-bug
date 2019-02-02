@@ -83,17 +83,17 @@ PiImageDecoder::PiImageDecoder()
     obGotEOS = 0;
     obDecodedAt = 0;
 
-    imgBuf = NULL;
-    inputBuf = NULL;
-    width = 0;
-    height = 0;
-    srcSize = 0;
+	imgBuf = NULL;
+	inputBuf = NULL;
+	width = 0;
+	height = 0;
+	srcSize = 0;
 
-    colorSpace = 0;
-    stride = 0;
-    sliceHeight = 0;
+	colorSpace = 0;
+	stride = 0;
+	sliceHeight = 0;
 
-    omxError = 0;
+	omxError = 0;
 }
 
 PiImageDecoder::~PiImageDecoder()
@@ -401,14 +401,14 @@ int PiImageDecoder::startupImageDecoder()
     //Tried smaller chunks, doesn't seem to like more than 16 input buffers??
     //TODO Seems to work at least with 3 - 8 buffers, not a clue why. Math seems sound
     ibBufferCount = 3;
-    
-    int maxBuffers = srcSize / bufSize;
+
+	int maxBuffers = srcSize / bufSize;
     if(srcSize % bufSize > 0)
-	maxBuffers++;
-	
+		maxBuffers++;
+
     if(ibBufferCount > maxBuffers)
-	ibBufferCount = maxBuffers;
-    
+		ibBufferCount = maxBuffers;
+
     portdef.nBufferCountActual = ibBufferCount;
 
     pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Setting port parameters\n");
@@ -598,6 +598,7 @@ void PiImageDecoder::cleanup()
 	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Continuing cleanup\n");
 
 	// flush everything through
+	/*
 	ret = OMX_SendCommand(handle, OMX_CommandFlush, outPort, NULL);
 	if(ret != OMX_ErrorNone)
 		pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Error flushing decoder commands: %s\n", OMX_errString(ret));
@@ -609,7 +610,7 @@ void PiImageDecoder::cleanup()
 		pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Error flushing decoder commands: %d\n", ret);
 	else
 		pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Decoder commands flushed\n");
-
+*/
 
     ret = OMX_SendCommand(handle, OMX_CommandStateSet, OMX_StateIdle, NULL);
     if(ret != OMX_ErrorNone)
@@ -678,8 +679,10 @@ void PiImageDecoder::cleanup()
         	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Error moving to loaded state: %s\n", OMX_errString(ret));
 
     ret =  ilclient_wait_for_event(component,
-			    OMX_EventCmdComplete, OMX_CommandStateSet,
-			    0, outPort, 0, ILCLIENT_STATE_CHANGED,
+			    OMX_EventCmdComplete,
+				OMX_CommandStateSet, 0,
+				OMX_StateLoaded, 0,
+				ILCLIENT_STATE_CHANGED,
 			    TIMEOUT_MS);
     if(ret != 0) pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: State never changed to loaded %d\n",ret);
 
@@ -691,7 +694,7 @@ void PiImageDecoder::cleanup()
 
     ret = OMX_Deinit();
     if(ret != OMX_ErrorNone)
-    	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Component did not enter Deinit(): %d\n",ret);
+    	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Component did not Deinit(): %d\n",ret);
 
     if (client != NULL) {
     	ilclient_destroy(client);
@@ -736,7 +739,6 @@ int PiImageDecoder::DecodeJpegImage(const char *img, sImage **ret)
     }
 
     fclose(fp);
-    //bcm_host_init();
 
     s = setupOpenMaxJpegDecoder();
     if(s != 0){
