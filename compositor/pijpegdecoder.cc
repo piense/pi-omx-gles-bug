@@ -8,7 +8,9 @@ extern "C"
 }
 
 #include "pijpegdecoder.h"
+#include "tricks.h"
 #include "../PiSignageLogging.h"
+#include "PiOMXUser.h"
 
 //use with nodeID OMX_ALL to start, not getting much data from jpegs (?)
 //Not working yet, very picky about where in the process it's called
@@ -72,7 +74,10 @@ PiImageDecoder::PiImageDecoder()
     inPort = 0;
     outPort = 0;
 
-    client = NULL;
+    //client = NULL;
+	PiOMXUser& user = PiOMXUser::getInstance();
+	client = user.getILClient();
+	
 
     ibIndex = 0;
     ibToRead = 0;
@@ -401,15 +406,7 @@ int PiImageDecoder::startupImageDecoder()
     //Tried smaller chunks, doesn't seem to like more than 16 input buffers??
     //TODO Seems to work at least with 3 - 8 buffers, not a clue why. Math seems sound
     ibBufferCount = 3;
-
-	int maxBuffers = srcSize / bufSize;
-    if(srcSize % bufSize > 0)
-		maxBuffers++;
-
-    if(ibBufferCount > maxBuffers)
-		ibBufferCount = maxBuffers;
-
-    portdef.nBufferCountActual = ibBufferCount;
+    portdef.nBufferCountActual = 3;
 
     pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Setting port parameters\n");
     OMX_SetParameter(handle, OMX_IndexParamPortDefinition, &portdef);
@@ -490,13 +487,14 @@ int PiImageDecoder::setupOpenMaxJpegDecoder()
 {
 	pis_logMessage(PIS_LOGLEVEL_FUNCTION_HEADER,"JPEG Decoder: setupOpenMaxJpegDecoder()\n");
 
+/*
     if ((client = ilclient_init()) == NULL) {
     	pis_logMessage(PIS_LOGLEVEL_ERROR,"JPEG Decoder: Failed to init ilclient\n");
 		return -1;
     }else{
     	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: ilclient loaded.\n");
     }
-
+*/
     ilclient_set_error_callback(client, error_callback, this);
     //ilclient_set_eos_callback(client, eos_callback, NULL);
     ilclient_set_fill_buffer_done_callback(
@@ -504,7 +502,9 @@ int PiImageDecoder::setupOpenMaxJpegDecoder()
     ilclient_set_empty_buffer_done_callback(
     		client, EmptyBufferDoneCB, this);
 
-	uint32_t ret = OMX_Init();
+	int ret;
+
+/*	uint32_t ret = OMX_Init();
     if (ret != OMX_ErrorNone) {
 		ilclient_destroy(client);
 		pis_logMessage(PIS_LOGLEVEL_ERROR,"JPEG Decoder: Failed to init OMX %#010x\n",ret);
@@ -512,7 +512,7 @@ int PiImageDecoder::setupOpenMaxJpegDecoder()
     }else{
     	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: OMX Initialized\n");
     }
-
+*/
     // prepare the image decoder
     ret = prepareImageDecoder();
     if (ret != 0)
@@ -598,7 +598,6 @@ void PiImageDecoder::cleanup()
 	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Continuing cleanup\n");
 
 	// flush everything through
-	/*
 	ret = OMX_SendCommand(handle, OMX_CommandFlush, outPort, NULL);
 	if(ret != OMX_ErrorNone)
 		pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Error flushing decoder commands: %s\n", OMX_errString(ret));
@@ -610,7 +609,7 @@ void PiImageDecoder::cleanup()
 		pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Error flushing decoder commands: %d\n", ret);
 	else
 		pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Decoder commands flushed\n");
-*/
+
 
     ret = OMX_SendCommand(handle, OMX_CommandStateSet, OMX_StateIdle, NULL);
     if(ret != OMX_ErrorNone)
@@ -692,13 +691,22 @@ void PiImageDecoder::cleanup()
     list[1] = (COMPONENT_T  *)NULL;
     ilclient_cleanup_components(list);
 
-    ret = OMX_Deinit();
-    if(ret != OMX_ErrorNone)
-    	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Component did not Deinit(): %d\n",ret);
+	ilclient_set_error_callback(client, NULL, this);
+    //ilclient_set_eos_callback(client, eos_callback, NULL);
+    ilclient_set_fill_buffer_done_callback(
+    		client, NULL, NULL);
+    ilclient_set_empty_buffer_done_callback(
+    		client, NULL, NULL);
 
+/*    ret = OMX_Deinit();
+    if(ret != OMX_ErrorNone)
+    	pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Component did not enter Deinit(): %d\n",ret);
+*/
+/*
     if (client != NULL) {
     	ilclient_destroy(client);
     }
+	*/
 }
 
 int PiImageDecoder::DecodeJpegImage(const char *img, sImage **ret)
@@ -710,7 +718,7 @@ int PiImageDecoder::DecodeJpegImage(const char *img, sImage **ret)
     obDecodedAt = 0;
     omxError = 0;
 
-    FILE *fp = fopen(img, "rb");
+    FILE           *fp = fopen(img, "rb");
     if (!fp) {
     	pis_logMessage(PIS_LOGLEVEL_ERROR,"JPEG Decoder: File %s not found.\n", img);
     	return -1;
@@ -739,6 +747,7 @@ int PiImageDecoder::DecodeJpegImage(const char *img, sImage **ret)
     }
 
     fclose(fp);
+    //bcm_host_init();
 
     s = setupOpenMaxJpegDecoder();
     if(s != 0){

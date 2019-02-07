@@ -7,10 +7,10 @@ extern "C"
 }
 
 #include <stdint.h>
+#include "tricks.h"
+#include "../common/PiCommonTricks.h"
 
 #define TIMEOUT_MS 200
-
-#include "imagecommon.h"
 
 sImage *decodeJpgImage(char *img);
 

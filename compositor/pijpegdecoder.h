@@ -7,7 +7,7 @@ extern "C"
 }
 
 #include <stdint.h>
-#include "imagecommon.h"
+#include "tricks.h"
 
 #define TIMEOUT_MS 200
 

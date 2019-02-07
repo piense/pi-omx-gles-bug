@@ -1,236 +1,312 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <unistd.h>
-#include <iostream>
-#include <fstream>
+#include <list>
+#include <boost/filesystem.hpp>
 
+#include "compositor/piImageResizer.h"
+#include "compositor/pijpegdecoder.h"
 #include "PiSignageLogging.h"
 
 extern "C"
 {
-//External libs
 #include "bcm_host.h"
+#include "ilclient/ilclient.h"
 }
-
-#include "GLES/gl.h"
-#include "EGL/egl.h"
-#include "EGL/eglext.h"
-
-#include "mediatypes/PiMediaImageGFX.h"
-#include "compositor/piSlideLoader.h"
 
 using namespace std;
+using namespace boost::filesystem;
 
-uint32_t screen_width;
-uint32_t screen_height;
-// OpenGL|ES objects
-DISPMANX_DISPLAY_HANDLE_T dispman_display;
-DISPMANX_ELEMENT_HANDLE_T dispman_element;
-EGLDisplay display;
-EGLSurface surface;
-EGLContext context;
+sImage * loadImage(const char *filename, uint16_t maxWidth, uint16_t maxHeight, pis_mediaSizing scaling);
+void showImage(sImage *img);
+void removeImage();
+void initDispmanx();
+void deinitDispmanx();
+sImage * demoImage( uint16_t maxWidth, uint16_t maxHeight, pis_mediaSizing scaling);
+uint32_t screenWidth, screenHeight;
+DISPMANX_DISPLAY_HANDLE_T dispmanx_display;
 
-int SignageExit = 0;
-
-void InitGLES();
-void CleanupGLES();
-
-void stop(int s){
-	printf("Caught signal %d\n",s);
-	SignageExit = 1;
-}
-
-void LoadStub(pis_MediaImageGFX *g){
-	g->Load();
-}
-
-int main(int argc, char *argv[])
+typedef struct
 {
-	pis_loggingLevel = PIS_LOGLEVEL_ALL;
+    DISPMANX_DISPLAY_HANDLE_T   display;
+    DISPMANX_MODEINFO_T         info;
+    void                       *image;
+    DISPMANX_UPDATE_HANDLE_T    update;
+    DISPMANX_RESOURCE_HANDLE_T  resource;
+    DISPMANX_ELEMENT_HANDLE_T   element;
+    uint32_t                    vc_image_ptr;
 
-	bcm_host_init();
+} RECT_VARS_T;
 
-	PiSlideLoader& loader = PiSlideLoader::getInstance();
+static RECT_VARS_T  gRectVars;
 
-	InitGLES();
+int main()
+{
+    bcm_host_init();
 
-	// reset model position
-	glMatrixMode(GL_MODELVIEW);
+    pis_loggingLevel = PIS_LOGLEVEL_ALL;
 
-	glLoadIdentity();
+    list<path> files;
+    sImage *currentImage;
+
+    path projects = path("/mnt/data/testImages");
+    
+    if(is_directory(projects)) {
+        for(auto& entry : directory_iterator(projects))
+        {
+            path file = entry.path();
+            if(is_regular_file(file) && file.extension() == string(".jpg")){
+                files.push_front(file);
+            }
+        }
+    }
+
+    int perSlide = 5; //Time in seconds to leave the slide up
+
+    initDispmanx();
+
+    while(1)
+    {
+        for(path f : files)
+        {
+            printf("Loading: %s\n", f.c_str());
+            printf("%d %d\n",gRectVars.info.width, gRectVars.info.height);
+            currentImage = loadImage(f.c_str(), gRectVars.info.width, gRectVars.info.height, pis_SIZE_SCALE);
+            //currentImage = demoImage( gRectVars.info.width, gRectVars.info.height, pis_SIZE_SCALE);
+            if(currentImage == NULL){
+                printf("ERROR loading image.");
+                goto cleanup;
+            }
+            showImage(currentImage);
+            usleep(perSlide * 1000000); //Seconds
+            removeImage();
+            delete [] currentImage->imageBuf;
+        }
+    }
 
 
-	//Load one locally
-	pis_MediaImageGFX image1;
-	image1.X = .25;
-	image1.Y = .25;
-	image1.MaxHeight = .5;
-	image1.MaxWidth = .5;
-	image1.Filename = "test.jpg";
-	image1.SetScreenSize(screen_width, screen_height);
-	image1.Load();
+    cleanup:
 
-	pis_MediaImageGFX image2;
-	image2.X = .5;
-	image2.Y = .5;
-	image2.MaxHeight = 1;
-	image2.MaxWidth = 1;
-	image2.Filename = "test.jpg";
-	image2.SetScreenSize(screen_width, screen_height);
-	loader.RunGLWork((void (*)(void*))LoadStub, (void*)&image2);
+    deinitDispmanx();
 
+    bcm_host_deinit();
 
-	while(SignageExit == 0)
+    return 0;
+}
+
+sImage * demoImage( uint16_t maxWidth, uint16_t maxHeight, pis_mediaSizing scaling)
+{
+    sImage *ret = new sImage();
+    ret->imageHeight = maxHeight;
+    ret->imageWidth = maxWidth;
+    ret->stride = maxWidth * 4;
+    ret->imageBuf = new uint8_t[maxHeight*maxWidth*4];
+    for(uint32_t i = 0;i<maxHeight*maxWidth*4;i++)
+        ret->imageBuf[i] = 255;
+    printf("Loaded!\n");
+    return ret;
+}
+
+void initDispmanx()
+{
+    RECT_VARS_T    *vars;
+    uint32_t        screen = 0;
+    int ret;
+
+    vars = &gRectVars;
+
+    bcm_host_init();
+
+    printf("Open display[%i]...\n", screen );
+    vars->display = vc_dispmanx_display_open( screen );
+
+    ret = vc_dispmanx_display_get_info( vars->display, &vars->info);
+    assert(ret == 0);
+    printf( "Display is %d x %d\n", vars->info.width, vars->info.height );
+}
+
+void deinitDispmanx()
+{
+    int ret = vc_dispmanx_resource_delete( gRectVars.resource );
+    assert( ret == 0 );
+    ret = vc_dispmanx_display_close( gRectVars.display );
+    assert( ret == 0 );
+}
+
+void showImage(sImage *img)
+{
+    int             ret;
+    VC_RECT_T       src_rect;
+    VC_RECT_T       dst_rect;
+
+    VC_DISPMANX_ALPHA_T alpha = { (DISPMANX_FLAGS_ALPHA_T)(DISPMANX_FLAGS_ALPHA_FROM_SOURCE | DISPMANX_FLAGS_ALPHA_FIXED_ALL_PIXELS), 
+                             255, /*alpha 0->255*/
+                             0 };
+
+    RECT_VARS_T    *vars = &gRectVars;
+
+    uint32_t vc_image_ptr;
+
+    vars->resource = vc_dispmanx_resource_create( VC_IMAGE_ARGB8888,
+                                                  img->imageWidth,
+                                                  img->imageHeight,
+                                                  &vc_image_ptr);
+
+    assert( vars->resource );
+    vc_dispmanx_rect_set( &dst_rect, 0, 0, img->imageWidth, img->imageHeight);
+    ret = vc_dispmanx_resource_write_data(  vars->resource,
+                                            VC_IMAGE_ARGB8888,
+                                            img->stride,
+                                            img->imageBuf,
+                                            &dst_rect );
+    assert( ret == 0 );
+    vars->update = vc_dispmanx_update_start( 10 );
+    assert( vars->update );
+
+    vc_dispmanx_rect_set( &src_rect, 0, 0, img->imageWidth << 16, img->imageHeight << 16 );
+
+    vc_dispmanx_rect_set( &dst_rect, ( vars->info.width - img->imageWidth ) / 2,
+                                     ( vars->info.height - img->imageHeight ) / 2,
+                                     img->imageWidth,
+                                     img->imageHeight );
+
+    vars->element = vc_dispmanx_element_add(    vars->update,
+                                                vars->display,
+                                                2000,               // layer
+                                                &dst_rect,
+                                                vars->resource,
+                                                &src_rect,
+                                                DISPMANX_PROTECTION_NONE,
+                                                &alpha,
+                                                NULL,             // clamp
+                                                DISPMANX_NO_ROTATE );
+
+    ret = vc_dispmanx_update_submit_sync( vars->update );
+    assert( ret == 0 );
+}
+
+void removeImage()
+{
+    printf("Remove image!\n");
+
+    int             ret;
+    
+    gRectVars.update = vc_dispmanx_update_start( 10 );
+    assert( gRectVars.update );
+
+    vc_dispmanx_element_remove(gRectVars.update, gRectVars.element);
+
+    ret = vc_dispmanx_update_submit_sync( gRectVars.update );
+
+    vc_dispmanx_resource_delete(gRectVars.resource);
+
+}
+
+//Loads an image file and resizes to the appropriate dimensions
+//Uses the Pis OpenMAX components. Decodes the file, converts it to ARGB, then resizes it.
+//Must use RGB for resizing or there are a bunch of restrictions on odd dimensions
+sImage * loadImage(const char *filename, uint16_t maxWidth, uint16_t maxHeight, pis_mediaSizing scaling)
+{
+	pis_logMessage(PIS_LOGLEVEL_FUNCTION_HEADER,"pis_MediaImageGFX::loadImage: %s\n",filename);
+
+	sImage *ret1 = NULL;
+	sImage *ret2 = NULL;
+	sImage *ret3 = NULL;
+	PiImageDecoder decoder;
+	PiImageResizer resize;
+	int err;
+	bool extraLine = false;
+	bool extraColumn = false;
+	double endMs;
+	double startMs = linuxTimeInMs();
+
+	//TODO: Create a component with the decoding, color space, and resize tunneled together
+
+	err = decoder.DecodeJpegImage(filename, &ret1);
+
+	if(err != 0 || ret1 == NULL)
 	{
-		// Start with a clear screen
-		glClear( GL_COLOR_BUFFER_BIT );
-
-		image1.GLDraw();
-		image2.GLDraw();
-
-		eglSwapBuffers(display, surface);
+		pis_logMessage(PIS_LOGLEVEL_ERROR, "loadImage: Error loading JPEG %s\n", filename);
+		goto error;
 	}
 
-	CleanupGLES();
+	pis_logMessage(PIS_LOGLEVEL_ALL,"pis_MediaImageGFX: Returned from decoder: %dx%d Size: %d Stride: %d Slice Height: %d\n",
+			ret1->imageWidth,ret1->imageHeight,
+			ret1->imageSize, ret1->stride, ret1->sliceHeight
+			);
 
-	bcm_host_deinit();
+	//Decoder buffer logic makes this safe, sliceHeight and stride are always rounded up to an even number
+	if(ret1->imageHeight%2 != 0) { ret1->imageHeight += 1; extraLine = true; }
+	if(ret1->imageWidth%2 != 0) { ret1->imageWidth += 1; extraColumn = true; }
 
-	return 0;
-}
+	//Resizer does odd things with YUV so
+	//Convert to RGB888 first
+	err =  resize.ResizeImage (
+			(char *)ret1->imageBuf,
+			ret1->imageWidth, ret1->imageHeight,
+			ret1->imageSize,
+			(OMX_COLOR_FORMATTYPE) ret1->colorSpace,
+			ret1->stride,
+			ret1->sliceHeight,
+			ret1->imageWidth, ret1->imageHeight,
+			pis_SIZE_STRETCH,
+			OMX_COLOR_Format32bitARGB8888,
+			&ret2
+			);
 
+	if(extraLine == true) ret2->imageHeight--;
+	if(extraColumn == true) ret2->imageWidth--;
 
-void InitGLES()
-{
-	int32_t success = 0;
-	EGLBoolean result;
-	EGLint num_config;
-
-	static EGL_DISPMANX_WINDOW_T nativewindow;
-
-	DISPMANX_UPDATE_HANDLE_T dispman_update;
-	VC_RECT_T dst_rect;
-	VC_RECT_T src_rect;
-
-	static const EGLint attribute_list[] =
+	if(err != 0 || ret2 == NULL)
 	{
-		EGL_RED_SIZE, 8,
-		EGL_GREEN_SIZE, 8,
-		EGL_BLUE_SIZE, 8,
-		EGL_ALPHA_SIZE, 8,
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_NONE
-	};
+		pis_logMessage(PIS_LOGLEVEL_ERROR, "pis_MediaImageGFX::loadImage: Error converting color space\n");
+		goto error;
+	}
 
-	EGLConfig config;
+	//Finally get the image into the size we need it
+	err =  resize.ResizeImage (
+			(char *)ret2->imageBuf,
+			ret2->imageWidth, ret2->imageHeight,
+			ret2->imageSize,
+			(OMX_COLOR_FORMATTYPE) ret2->colorSpace,
+			ret2->stride,
+			ret2->sliceHeight,
+			maxWidth,maxHeight,
+			scaling,
+			OMX_COLOR_Format32bitARGB8888,
+			&ret3
+			);
 
-	// get an EGL display connection
-	display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	assert(display!=EGL_NO_DISPLAY);
+	if(err != 0 || ret3 == NULL)
+	{
+		pis_logMessage(PIS_LOGLEVEL_ERROR, "pis_MediaImageGFX::loadImage: Error resizing image.\n");
+		goto error;
+	}
 
-	// initialize the EGL display connection
-	result = eglInitialize(display, NULL, NULL);
-	assert(EGL_FALSE != result);
+	delete [] ret2->imageBuf;
+	delete ret2;
 
-	// get an appropriate EGL frame buffer configuration
-	result = eglChooseConfig(display, attribute_list, &config, 1, &num_config);
-	assert(EGL_FALSE != result);
+    delete [] ret1->imageBuf;
 
-	// create an EGL rendering context
-	context = eglCreateContext(display, config, PiSlideLoader::loadingContext(), NULL);
-	assert(context!=EGL_NO_CONTEXT);
+    delete ret1;
 
-	// create an EGL window surface
-	success = graphics_get_display_size(0 /* LCD */, &screen_width, &screen_height);
-	assert( success >= 0 );
+    endMs = linuxTimeInMs();
 
-	dst_rect.x = 0;
-	dst_rect.y = 0;
-	dst_rect.width = screen_width;
-	dst_rect.height = screen_height;
-		
-	src_rect.x = 0;
-	src_rect.y = 0;
-	src_rect.width = screen_width << 16;
-	src_rect.height = screen_height << 16;        
+    pis_logMessage(PIS_LOGLEVEL_INFO, "pis_MediaImageGFX: Resized image in %f seconds.\n",(endMs-startMs)/1000.0);
+	return ret3;
 
-	dispman_display = vc_dispmanx_display_open( 0 /* LCD */);
-	dispman_update = vc_dispmanx_update_start( 0 );
+	error:
+	if(ret1 != NULL && ret1->imageBuf != NULL)
+		delete [] ret1->imageBuf;
+	if(ret1 != NULL)
+		delete ret1;
 
-	VC_DISPMANX_ALPHA_T alpha;  //alpha.alpha: 0->255
-	alpha.flags = (DISPMANX_FLAGS_ALPHA_T)
-		(DISPMANX_FLAGS_ALPHA_FROM_SOURCE | DISPMANX_FLAGS_ALPHA_MIX);
-	alpha.opacity = 255; 
-	alpha.mask = 0;
-			
-	dispman_element = vc_dispmanx_element_add ( dispman_update, dispman_display,
-		20 /*layer*/, &dst_rect, 0/*src*/,
-		&src_rect, DISPMANX_PROTECTION_NONE, &alpha /*alpha*/, 0/*clamp*/, DISPMANX_NO_ROTATE/*transform*/);
-		
-	nativewindow.element = dispman_element;
-	nativewindow.width = screen_width;
-	nativewindow.height = screen_height;
-	vc_dispmanx_update_submit_sync( dispman_update );
-		
-	surface = eglCreateWindowSurface( display, config, &nativewindow, NULL );
-	assert(surface != EGL_NO_SURFACE);
+	if(ret2 != NULL && ret2->imageBuf != NULL)
+		delete [] ret2->imageBuf;
+	if(ret2 != NULL)
+		delete ret2;
 
-	// connect the context to the surface
-	result = eglMakeCurrent(display, surface, surface, context);
-	assert(EGL_FALSE != result);
+	if(ret3 != NULL)
+		delete ret3;
 
-	// Set background color and clear buffers
-	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-	// Enable back face culling.
-	glEnable(GL_CULL_FACE);
-
-	glViewport(0, 0, (GLsizei)screen_width, (GLsizei)screen_height);
-		
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-
-	glOrthof(0.F, (float)screen_width, 0.F, (float)screen_height, -1.F, 1.F);
-
-	glEnableClientState( GL_VERTEX_ARRAY );
-
-	// reset model position
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	glEnable(GL_BLEND);
-	glEnable(GL_TEXTURE_2D);
-
+	return NULL;
 }
 
-void CleanupGLES()
-{
-   DISPMANX_UPDATE_HANDLE_T dispman_update;
-   int s;
-   // clear screen
-   glClear( GL_COLOR_BUFFER_BIT );
-   eglSwapBuffers(display, surface);
-
-   eglDestroySurface( display, surface );
-
-   dispman_update = vc_dispmanx_update_start( 0 );
-   s = vc_dispmanx_element_remove(dispman_update, dispman_element);
-   if(s != 0){
-	   pis_logMessage(PIS_LOGLEVEL_WARN, "PiSlideRenderer::CleanupGLES() WARNING removing element failed %d", s);
-   }
-   
-   vc_dispmanx_update_submit_sync( dispman_update );
-   s = vc_dispmanx_display_close(dispman_display);
-   if(s != 0){
-	   pis_logMessage(PIS_LOGLEVEL_WARN, "PiSlideRenderer::CleanupGLES() WARNING closing display failed %d", s);
-   }
-
-   // Release OpenGL resources
-   eglMakeCurrent( display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT );
-   eglDestroyContext( display, context );
-   eglTerminate( display );
-
-}

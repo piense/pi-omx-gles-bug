@@ -7,18 +7,23 @@ extern "C"
 #include "ilclient/ilclient.h"
 }
 
+#include "PiOMXUser.h"
+
 #include "piImageResizer.h"
 #include "../PiSignageLogging.h"
 
 PiImageResizer::PiImageResizer(){
 	pis_logMessage(PIS_LOGLEVEL_ALL,"New Resizer\n");
 
+	PiOMXUser& user = PiOMXUser::getInstance();
+	client = user.getILClient();
+
     component = NULL;
     handle = NULL;
     inPort = 0;
     outPort = 0;
 
-    client = NULL;
+    //client = NULL;
 
     //Input stuff
 	imgBuf = NULL;
@@ -285,7 +290,7 @@ int PiImageResizer::startupImageResizer()
     portdef.format.image.nFrameWidth = srcWidth;
     portdef.nBufferSize = srcSize;
     portdef.format.image.nStride = srcStride ;
-    portdef.format.image.nSliceHeight = srcSliceHeight;
+	portdef.format.image.nSliceHeight = srcSliceHeight;
 
     portdef.format.image.eCompressionFormat = OMX_IMAGE_CodingUnused;
     portdef.format.image.eColorFormat = srcColorSpace;
@@ -385,12 +390,7 @@ int PiImageResizer::setupOpenMaxImageResizer()
 {
 	pis_logMessage(PIS_LOGLEVEL_FUNCTION_HEADER,"Resizer: setupOpenMaxImageResizer()\n");
 
-    if ((client = ilclient_init()) == NULL) {
-    	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Failed to init ilclient\n");
-		return -1;
-    }else{
-    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: ilclient loaded.\n");
-    }
+
 
     //ilclient_set_error_callback(client, error_callback, this);
     //ilclient_set_eos_callback(client, eos_callback, NULL);
@@ -398,12 +398,6 @@ int PiImageResizer::setupOpenMaxImageResizer()
     //		client, FillBufferDoneCB, this);
     //ilclient_set_empty_buffer_done_callback(
     //		client, EmptyBufferDoneCB, this);
-
-    if (OMX_Init() != OMX_ErrorNone) {
-		ilclient_destroy(client);
-		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Failed to init OMX\n");
-		return -1;
-    }
 
     // prepare the image decoder
     int ret = prepareImageResizer();
@@ -583,14 +577,6 @@ void PiImageResizer::cleanup()
     list[0] = component;
     list[1] = (COMPONENT_T  *)NULL;
     ilclient_cleanup_components(list);
-
-    ret = OMX_Deinit();
-    if(ret != OMX_ErrorNone)
-    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Component did not Deinit(): %d\n",ret);
-
-    if (client != NULL) {
-    	ilclient_destroy(client);
-    }
 }
 
 //TODO: Issue size warnings when input or output is YUV:
