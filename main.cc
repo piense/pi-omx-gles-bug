@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <list>
-#include <boost/filesystem.hpp>
+#include <dirent.h>
+#include <string>
+#include <assert.h>
 
 #include "compositor/piImageResizer.h"
 #include "compositor/pijpegdecoder.h"
@@ -9,11 +11,10 @@
 extern "C"
 {
 #include "bcm_host.h"
-#include "ilclient/ilclient.h"
+
 }
 
 using namespace std;
-using namespace boost::filesystem;
 
 sImage * loadImage(const char *filename, uint16_t maxWidth, uint16_t maxHeight, pis_mediaSizing scaling);
 void showImage(sImage *img);
@@ -44,28 +45,33 @@ int main()
 
     pis_loggingLevel = PIS_LOGLEVEL_ALL;
 
-    list<path> files;
+    list<string> files;
     sImage *currentImage;
 
-    path projects = path("/mnt/data/testImages");
-    
-    if(is_directory(projects)) {
-        for(auto& entry : directory_iterator(projects))
-        {
-            path file = entry.path();
-            if(is_regular_file(file) && file.extension() == string(".jpg")){
-                files.push_front(file);
-            }
-        }
+    DIR *dir;
+    struct dirent *ent;
+    if ((dir = opendir ("testImages")) != NULL) {
+      /* print all the files and directories within directory */
+	while ((ent = readdir (dir)) != NULL) {
+	    if(string(ent->d_name).find("jpg") != -1){
+		printf("Adding %s\n",ent->d_name);
+		files.push_back(string("testImages/")+string(ent->d_name));
+	    }
+	}
+	closedir (dir);
+    } else {
+	/* could not open directory */
+	printf ("ERROR opening directory\n");
+	return EXIT_FAILURE;
     }
-
+    
     int perSlide = 5; //Time in seconds to leave the slide up
 
     initDispmanx();
 
     while(1)
     {
-        for(path f : files)
+        for(string f : files)
         {
             printf("Loading: %s\n", f.c_str());
             printf("%d %d\n",gRectVars.info.width, gRectVars.info.height);
