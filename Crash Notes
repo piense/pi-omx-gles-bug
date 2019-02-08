@@ -1,0 +1,44 @@
+ran with start_debug=1 in config.txt
+
+'sudo vcgencmd log msg' hangs
+
+'pi@raspberrypi:~/pi-omx-gles-bug $ sudo vcdbg log assert
+166702.920: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+171903.002: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+177103.082: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+182303.165: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+187503.245: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+192703.327: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+197903.407: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+203103.488: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+208303.566: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+213503.647: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+218703.727: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+223903.808: assert( (interrupt_save & (1<<30)) || ((int)_tx_thread_system_state < 0) ) failed; ../../../../../vcfw/rtos/threadx/rtos_threadx_latch.c::rtos_latch_get_real line 99 rev af80847
+vcdbg_ctx_get_dump_stack: dump_stack failed
+----------------
+pi@raspberrypi:~/pi-omx-gles-bug $ 
+
+
