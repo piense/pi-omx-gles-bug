@@ -1,3 +1,5 @@
+uname -a Linux raspberrypi 4.14.34-v7+ #1110 SMP Mon Apr 16 15:18:51 BST 2018 armv7l GNU/Linux
+
 ran with start_debug=1 in config.txt
 
 'sudo vcgencmd log msg' hangs
