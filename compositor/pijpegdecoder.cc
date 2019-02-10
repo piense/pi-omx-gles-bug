@@ -405,8 +405,17 @@ int PiImageDecoder::startupImageDecoder()
     //the file header, rest of the file is in the second and third buffer
     //Tried smaller chunks, doesn't seem to like more than 16 input buffers??
     //TODO Seems to work at least with 3 - 8 buffers, not a clue why. Math seems sound
+
     ibBufferCount = 3;
-    portdef.nBufferCountActual = 3;
+
+	int maxBuffers = srcSize / bufSize;
+    if(srcSize % bufSize > 0)
+		maxBuffers++;
+
+    if(ibBufferCount > maxBuffers)
+		ibBufferCount = maxBuffers;
+
+    portdef.nBufferCountActual = ibBufferCount;
 
     pis_logMessage(PIS_LOGLEVEL_ALL,"JPEG Decoder: Setting port parameters\n");
     OMX_SetParameter(handle, OMX_IndexParamPortDefinition, &portdef);
