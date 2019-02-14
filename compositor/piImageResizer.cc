@@ -434,7 +434,8 @@ int PiImageResizer::doResize()
 
     int ret;
     int outputPortConfigured = 0;
-
+mFillBufferDone = false;
+	
     ret = OMX_EmptyThisBuffer(handle,ibBufferHeader);
 	if (ret != OMX_ErrorNone) {
 		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Error in OMX_EmptyThisBuffer: %s\n",OMX_errString(ret));
