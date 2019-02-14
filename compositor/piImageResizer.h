@@ -7,6 +7,7 @@ extern "C"
 }
 
 #include <stdint.h>
+#include <atomic>
 #include "tricks.h"
 #include "../common/PiCommonTricks.h"
 
@@ -94,5 +95,6 @@ private:
     uint8_t *outputPic;
     uint8_t outputColorSpace; //TODO switch to enum
 
+	std::atomic<bool> mFillBufferDone;
 
 };

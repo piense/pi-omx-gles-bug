@@ -1,5 +1,8 @@
 #include "stdio.h"
 #include <malloc.h>
+#include <atomic>
+
+using namespace std;
 
 extern "C"
 {
@@ -50,6 +53,8 @@ PiImageResizer::PiImageResizer(){
     outputSliceHeight = 0;
     outputPic = NULL;
     outputColorSpace = 0;
+
+	mFillBufferDone = false;
 }
 
 PiImageResizer::~PiImageResizer(){
@@ -63,6 +68,8 @@ void PiImageResizer::EmptyBufferDoneCB(
 	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Done with input buffer\n");
 }
 
+//TODO ERROR FLAG TO FREE doResize()
+
 void PiImageResizer::FillBufferDoneCB(
   void* data,
   COMPONENT_T *comp)
@@ -73,30 +80,33 @@ void PiImageResizer::FillBufferDoneCB(
 
 	if(decoder->obHeader != NULL){
 		pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Processing received buffer\n");
-
+/*
 		if(decoder->obHeader->nFilledLen + decoder->obDecodedAt > decoder->obHeader->nAllocLen){
 			pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: ERROR overrun of decoded image buffer\n %d %d %d\n",
 					decoder->obHeader->nFilledLen, decoder->obDecodedAt, decoder->obHeader->nAllocLen);
 		}
 
 	    decoder->obDecodedAt += decoder->obHeader->nFilledLen;
+*/		
 
 	    //See if we've reached the end of the stream
 	    if (decoder->obHeader->nFlags & OMX_BUFFERFLAG_EOS) {
 	    	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Output buffer EOS received\n");
-	    	decoder->obGotEOS = 1;
+			decoder->mFillBufferDone = true;
 	    }else{
 	    	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Output buffer asking for more data\n");
-			int ret = OMX_FillThisBuffer(decoder->handle,
-					decoder->obHeader);
-			if (ret != OMX_ErrorNone) {
-				pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Error in FillThisBuffer: %s",OMX_errString(ret));
-				return;
-			}
+			//int ret = OMX_FillThisBuffer(decoder->handle,
+			//		decoder->obHeader);
+			//if (ret != OMX_ErrorNone) {
+			//	pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Error in FillThisBuffer: %s",OMX_errString(ret));
+			//	return;
+			//}
 	    }
 	}else{
 		pis_logMessage(PIS_LOGLEVEL_ERROR,"Resizer: Error: No obHeader\n");
 	}
+
+
 }
 
 
@@ -394,8 +404,8 @@ int PiImageResizer::setupOpenMaxImageResizer()
 
     //ilclient_set_error_callback(client, error_callback, this);
     //ilclient_set_eos_callback(client, eos_callback, NULL);
-    //ilclient_set_fill_buffer_done_callback(
-    //		client, FillBufferDoneCB, this);
+    ilclient_set_fill_buffer_done_callback(
+    		client, FillBufferDoneCB, this);
     //ilclient_set_empty_buffer_done_callback(
     //		client, EmptyBufferDoneCB, this);
 
@@ -457,6 +467,7 @@ int PiImageResizer::doResize()
 		return -3;
 	}
 
+/*
 	ret = ilclient_wait_for_event
 		(component, OMX_EventBufferFlag ,
 		outPort, 0,
@@ -468,7 +479,13 @@ int PiImageResizer::doResize()
 		return -4;
 	}else{
 		pis_logMessage(PIS_LOGLEVEL_ALL, "Resizer: EOS on output port detected\n");
+	}*/
+
+	while(!mFillBufferDone){
+
 	}
+
+	pis_logMessage(PIS_LOGLEVEL_ALL,"Resizer: Buffer returned\n");
 
 
     return 0;
@@ -577,6 +594,9 @@ void PiImageResizer::cleanup()
     list[0] = component;
     list[1] = (COMPONENT_T  *)NULL;
     ilclient_cleanup_components(list);
+
+	ilclient_set_fill_buffer_done_callback(
+    		client, NULL, NULL);
 }
 
 //TODO: Issue size warnings when input or output is YUV:
